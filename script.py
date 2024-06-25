@@ -88,8 +88,8 @@ def init_glue_client():
     return glue_client
     
 
-def get_anomesdia():
-    return datetime.now().strftime('%Y%m%d')
+def get_anomes():
+    return datetime.now().strftime('%Y%m')
     
 
 def read_raw_info(spark_session, s3_bucket_stage):
@@ -139,8 +139,8 @@ def create_select_columns_spark_frame(frame, cols: list):
     return frame
     
 
-def transform_frame(frame):
-    
+def transform_frame(sparkSession, bucket_stage, ano_mes):
+    frame = read_raw_info(sparkSession, bucket_stage)
     frame, cols = select_explode_columns_spark_frame(frame)
     frame = create_select_columns_spark_frame(frame, cols)
 
@@ -157,12 +157,31 @@ def transform_frame(frame):
     final_frame = final_frame.withColumn("nome_biblioteca", F.split(F.col("new_biblioteca"), ':')[1])
 
     final_frame = (
-            final_frame.
-            select(*[col for col in final_frame.columns if col not in ('new_name','new_biblioteca')])
+            final_frame
+            .select(*[col for col in final_frame.columns if col not in ('new_name','new_biblioteca')])
+            .withColumn('anomes', F.lit(ano_mes))
         )
     
     return final_frame
     
+
+def create_micro_frame_with_domain(column_name, frame):
+    frame_r = frame.select(F.col(column_name)).distinct()
+    return frame_r
+    
+
+def view_table_glue(glue_context, database, table_name):
+    dynamic_frame = (
+        glue_context
+        .create_dynamic_frame
+        .from_catalog(
+            database=database, 
+            table_name=table_name
+        )
+    )
+    frame = dynamic_frame.toDF()
+    frame.createOrReplaceTempView(f"view_{table_name}")
+
 
 def main():
     
@@ -172,25 +191,41 @@ def main():
     job_init = init_job(gluecontext, args)
     glue_client = init_glue_client()
     
-    anomesdia = get_anomesdia()
+    ano_mes = get_anomes()
     bucket_stage = args['BUCKET_STAGE']
     bucket_sor = args['BUCKET_SOR']
     database_sor = args['DATABASE_SOR']
     
-    # pyspark_frame = read_raw_info(sparkSession, bucket_stage)
-    # pyspark_frame = transform_frame(pyspark_frame)
+    pyspark_frame = transform_frame(sparkSession, bucket_stage, ano_mes)
     
-    # print(pyspark_frame.columns)
-    # pyspark_frame.show(truncate=False, n=2)
+    print(pyspark_frame.columns)    # 	['versao_biblioteca', 'licenca_biblioteca', 'nome_repositorio', 'gerenciador_biblioteca', 'nome_biblioteca', 'anomes']
+    pyspark_frame.show(truncate=False, n=4)
     # pyspark_frame.printSchema()
     
-    # Example usage
-    # database_name = 'your_database_name'
-    schemas = get_all_schemas(database_sor)
+    tbl_repositorio = create_micro_frame_with_domain('nome_repositorio', pyspark_frame)
+    tbl_biblioteca = create_micro_frame_with_domain('nome_biblioteca', pyspark_frame)
+    tbl_gerenciador = create_micro_frame_with_domain('gerenciador_biblioteca', pyspark_frame)
+    tbl_licenca = create_micro_frame_with_domain('licenca_biblioteca', pyspark_frame)
+    
+    tbl_biblioteca.show(truncate=False, n=20)
     tables = list_tables(database_sor)
     
-    print(f"Tables in database '{database_sor}': {tables}")
-    print(f"Tables in schemas '{database_sor}': {schemas}")
+    # corrigir aqui
+    for table in tables:
+        view_table_glue(gluecontext, database_sor, table)
+    
+    
+    
+    
+    # repositorio_frame = pyspark_frame.select().withColumn("repositorio_id", F.monotonically_increasing_id())
+    # gerenciadores_frame = pyspark_frame.withColumn("gerenciador_id", F.monotonically_increasing_id())
+    # licencas_frame = pyspark_frame.withColumn("licenca_id", F.monotonically_increasing_id())
+    
+    # Example usage
+    # schemas = get_all_schemas(database_sor)
+    
+    # print(f"Tables in database '{database_sor}': {tables}")
+    # print(f"Tables in schemas '{database_sor}': {schemas}")
         
     job_init.commit()
     
