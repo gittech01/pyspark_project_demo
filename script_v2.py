@@ -244,11 +244,21 @@ def main():
     # 'gerenciador_biblioteca', 'nome_biblioteca', 'anomes']
     ps_frame.show(truncate=False, n=4)
     
+    tbl_repositorio_frame = create_micro_frame_with_domain('nome_repositorio', ps_frame)
     tbl_biblioteca_frame = create_micro_frame_with_domain('nome_biblioteca', ps_frame)
-
+    tbl_gerenciador_frame = create_micro_frame_with_domain('gerenciador_biblioteca', ps_frame)
+    tbl_licenca_frame = create_micro_frame_with_domain('licenca_biblioteca', ps_frame)
     
     table_name = 'tbl_biblioteca'
-
+    
+    # inser_data_db(database_sor, table_name, tbl_biblioteca_frame, gluecontext)
+    # tbl_biblioteca_frame.show(truncate=False, n=20)
+    # tables = list_tables(database_sor)
+    # print(tables)
+    # # [' tbl_conformidade_open_source', 'tbl_biblioteca',
+    # # 'tbl_gerenciador_biblioteca', 'tbl_licenca', 'tbl_repositorio']
+    # #
+    
     ps_frame_from_dy = view_table_glue(gluecontext, database_sor, table_name)
     try:
         max_id = ps_frame_from_dy.selectExpr(f"max(biblioteca_id) as max_id").first()["max_id"]
@@ -259,6 +269,7 @@ def main():
         frame_glue = create_hash_validate(frame=ps_frame_from_dy, columns= ['nome_biblioteca'])
         
         frame_to_update = frame_insert(left_frame=frame_new, right_frame=frame_glue)
+        print('Frame frame_to_update line[272]:')
         frame_to_update.printSchema()
     except AnalysisException:
         frame_to_update = tbl_biblioteca_frame
@@ -266,9 +277,48 @@ def main():
     frame_to_update = frame_to_update.withColumn(
         'biblioteca_id',  F.row_number().over(
             Window.orderBy(frame_to_update.nome_biblioteca.asc()))+ max_id)
+    print('Frame frame_to_update line[278]:')
     frame_to_update.printSchema()
     
     inser_data_db(database_sor, table_name, frame_to_update, gluecontext)
+        
+
+        
+    # print(ps_frame_from_dy.columns)
+    # ps_frame_from_dy.show()
+    # ps_frame_from_dy.printSchema()
+    
+    
+    # ps_frame_from_dy.createOrReplaceTempView(f"vw_{table_name}")
+    
+    # psq_frame_tb = sparkSession.sql(f'select * from vw_{table_name}')
+    # psq_frame_tb.show(truncate=False, n=20)
+    # # for table in tables:
+    # #     view_table_glue(gluecontext, database_sor, table)
+    
+    
+    
+    
+    # repositorio_frame = ps_frame.select().withColumn("repositorio_id", F.monotonically_increasing_id())
+    # gerenciadores_frame = ps_frame.withColumn("gerenciador_id", F.monotonically_increasing_id())
+    # licencas_frame = ps_frame.withColumn("licenca_id", F.monotonically_increasing_id())
+    
+    # Example usage
+    # schemas = get_all_schemas(database_sor)
+    
+    # print(f"Tables in database '{database_sor}': {tables}")
+    # print(f"Tables in schemas '{database_sor}': {schemas}")
+    
+    # Tables in database 'conformidade_open_source': ['tbl_biblioteca', 'tbl_conformidade_open_source', 'tbl_gerenciador_biblioteca', 'tbl_licenca', 'tbl_repositorio']
+    # Tables in schemas 'conformidade_open_source':
+    #     {
+    #         'tbl_biblioteca': [('biblioteca_id', 'int'), ('nome_biblioteca', 'string')],
+    #         'tbl_conformidade_open_source': [('repositorio_id', 'int'), ('gerenciador_id', 'int'), ('biblioteca_id', 'int'), ('versao_biblioteca', 'string'), ('anomesdia', 'string')],
+    #         'tbl_gerenciador_biblioteca': [('gerenciador_id', 'int'), ('nome_gerenciador_biblioteca', 'string')], 'tbl_licenca': [('licenca_id', 'int'), ('nome_licenca', 'string')], 
+    #         'tbl_repositorio': [('repositorio_id', 'int'), ('nome_repositorio', 'string')]
+            
+    #     }
+
         
     logger.info('===============   FINISH JOB   ================')
     
